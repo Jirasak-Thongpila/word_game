@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมลากตัวอักษร - Word Game</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Vue.js -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <!-- Axios -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+
+    <!-- SortableJS for drag and drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap');
+
+        body {
+            font-family: 'Kanit', sans-serif;
+        }
+
+        .letter-box {
+            transition: all 0.3s ease;
+        }
+
+        .letter-box:hover {
+            transform: scale(1.05);
+        }
+
+        .drop-zone {
+            min-height: 80px;
+            border: 2px dashed #cbd5e0;
+            transition: all 0.3s ease;
+        }
+
+        .drop-zone.drag-over {
+            border-color: #4299e1;
+            background-color: #ebf8ff;
+        }
+
+        .letter-dragging {
+            opacity: 0.5;
+        }
+
+        .bounce-animation {
+            animation: bounce 0.6s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+            60% {
+                transform: translateY(-5px);
+            }
+        }
+
+        .celebration {
+            animation: celebration 1s ease-in-out;
+        }
+
+        @keyframes celebration {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-400 via-purple-500 to-pink-400 min-h-screen">
+    <div id="app">
+        <!-- Header -->
+        <header class="text-center py-8">
+            <h1 class="text-4xl font-bold text-white mb-4">🎯 เกมลากตัวอักษร</h1>
+            <p class="text-xl text-white opacity-90">ลากตัวอักษรมาเรียงเป็นคำที่ถูกต้อง!</p>
+        </header>
+
+        <!-- Game Container -->
+        <div class="container mx-auto px-4 max-w-4xl">
+            <!-- Control Panel -->
+            <div class="bg-white rounded-lg shadow-xl p-6 mb-8">
+                <div class="flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-4">
+                        <label class="font-semibold text-gray-700">ภาษา:</label>
+                        <select v-model="selectedLanguage" @change="newGame"
+                                class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="th">ไทย</option>
+                            <option value="en">English</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <label class="font-semibold text-gray-700">ระดับ:</label>
+                        <select v-model="selectedDifficulty" @change="newGame"
+                                class="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="1">ง่าย</option>
+                            <option value="2">ปานกลาง</option>
+                            <option value="3">ยาก</option>
+                        </select>
+                    </div>
+
+                    <div class="flex items-center gap-4">
+                        <span class="font-semibold text-gray-700">คะแนน: <span class="text-blue-600">[[ score ]]</span></span>
+                        <span class="font-semibold text-gray-700">รอบ: <span class="text-green-600">[[ wordsCompleted ]]</span></span>
+                    </div>
+                </div>
+
+                <div class="flex justify-center mt-4">
+                    <button @click="newGame"
+                            class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg transition-colors">
+                        🎮 เริ่มเกมใหม่
+                    </button>
+                </div>
+            </div>
+
+            <!-- Game Area -->
+            <div v-if="!loading && currentWord" class="bg-white rounded-lg shadow-xl p-8">
+                <!-- Instructions -->
+                <div class="text-center mb-6">
+                    <p class="text-lg text-gray-700 mb-2">ลากตัวอักษรมาเรียงในช่องด้านล่าง</p>
+                    <p class="text-sm text-gray-500">คำที่ต้องเรียง: [[ currentWord.length ]] ตัวอักษร</p>
+                </div>
+
+                <!-- Shuffled Letters -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 text-center">ตัวอักษรที่สุ่ม</h3>
+                    <div id="shuffled-letters" class="flex flex-wrap justify-center gap-3">
+                        <div v-for="(letter, index) in shuffledLetters"
+                             :key="`shuffled-${index}`"
+                             :data-letter="letter"
+                             :data-original-index="index"
+                             class="letter-box bg-blue-100 border-2 border-blue-300 rounded-lg p-4 text-2xl font-bold text-blue-800 cursor-move hover:bg-blue-200 select-none">
+                            [[ letter ]]
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Drop Zone -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold text-gray-700 mb-4 text-center">เรียงตัวอักษรที่นี่</h3>
+                    <div id="answer-zone"
+                         class="drop-zone flex flex-wrap justify-center gap-3 p-6 rounded-lg bg-gray-50">
+                        <!-- Letters will be dropped here -->
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="flex justify-center gap-4 mb-6">
+                    <button @click="checkAnswer"
+                            :disabled="!canCheck"
+                            :class="canCheck ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 cursor-not-allowed'"
+                            class="text-white font-semibold py-3 px-6 rounded-lg transition-colors">
+                        ✅ ตรวจคำตอบ
+                    </button>
+
+                    <button @click="clearAnswer"
+                            class="bg-red-500 hover:bg-red-600 text-white font-semibold py-3 px-6 rounded-lg transition-colors">
+                        🔄 ล้างคำตอบ
+                    </button>
+
+                    <button @click="showHint"
+                            :disabled="hintUsed"
+                            :class="!hintUsed ? 'bg-yellow-500 hover:bg-yellow-600' : 'bg-gray-300 cursor-not-allowed'"
+                            class="text-white font-semibold py-3 px-6 rounded-lg transition-colors">
+                        💡 ใบ้
+                    </button>
+                </div>
+
+                <!-- Hint Display -->
+                <div v-if="hintText" class="text-center mb-6">
+                    <p class="bg-yellow-100 border border-yellow-300 rounded-lg p-3 text-yellow-800 inline-block">
+                        💡 คำใบ้: [[ hintText ]]
+                    </p>
+                </div>
+
+                <!-- Result Display -->
+                <div v-if="showResult" class="text-center mb-6">
+                    <div :class="isCorrect ? 'bg-green-100 border-green-300 text-green-800' : 'bg-red-100 border-red-300 text-red-800'"
+                         class="border rounded-lg p-4 inline-block">
+                        <p class="text-xl font-semibold mb-2">
+                            [[ isCorrect ? '🎉 ถูกต้อง!' : '❌ ไม่ถูกต้อง' ]]
+                        </p>
+                        <p>คำตอบที่ถูก: <span class="font-bold">[[ currentWord ]]</span></p>
+                        <p v-if="!isCorrect">คำตอบของคุณ: <span class="font-bold">[[ userAnswer ]]</span></p>
+                    </div>
+                </div>
+
+                <!-- Next Button -->
+                <div v-if="showResult" class="text-center">
+                    <button @click="nextWord"
+                            class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-3 px-8 rounded-lg transition-colors">
+                        ▶️ คำต่อไป
+                    </button>
+                </div>
+            </div>
+
+            <!-- Loading State -->
+            <div v-if="loading" class="text-center">
+                <div class="bg-white rounded-lg shadow-xl p-8">
+                    <div class="bounce-animation inline-block text-6xl mb-4">🎯</div>
+                    <p class="text-xl text-gray-700">กำลังโหลด...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+
+        // Configure Vue to use different delimiters to avoid conflict with Django
+        createApp({
+            delimiters: ['[[', ']]'],
+            data() {
+                return {
+                    selectedLanguage: 'th',
+                    selectedDifficulty: '1',
+                    currentWord: '',
+                    shuffledLetters: [],
+                    userAnswer: '',
+                    score: 0,
+                    wordsCompleted: 0,
+                    loading: false,
+                    showResult: false,
+                    isCorrect: false,
+                    hintText: '',
+                    hintUsed: false,
+                    sessionId: this.generateSessionId(),
+                    shuffledSortable: null,
+                    answerSortable: null,
+                    answerCount: 0
+                }
+            },
+
+            computed: {
+                canCheck() {
+                    return this.currentWord && this.answerCount === this.currentWord.length;
+                }
+            },
+
+            mounted() {
+                this.newGame();
+                this.initializeSortable();
+            },
+
+            methods: {
+                async newGame() {
+                    this.loading = true;
+                    this.showResult = false;
+                    this.hintText = '';
+                    this.hintUsed = false;
+                    this.userAnswer = '';
+                    this.answerCount = 0;
+                    this.clearAnswer();
+
+                    try {
+                        const response = await axios.get('/api/get-word/', {
+                            params: {
+                                language: this.selectedLanguage,
+                                difficulty: this.selectedDifficulty
+                            }
+                        });
+
+                        if (response.data.success) {
+                            this.currentWord = response.data.word;
+                            this.shuffledLetters = [...response.data.shuffled_letters];
+
+                            setTimeout(() => {
+                                this.initializeSortable();
+                            }, 100);
+                        } else {
+                            alert('เกิดข้อผิดพลาด: ' + response.data.error);
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
+                    }
+
+                    this.loading = false;
+                },
+
+                initializeSortable() {
+                    // Destroy existing sortable instances
+                    if (this.shuffledSortable) {
+                        this.shuffledSortable.destroy();
+                    }
+                    if (this.answerSortable) {
+                        this.answerSortable.destroy();
+                    }
+
+                    const shuffledEl = document.getElementById('shuffled-letters');
+                    const answerEl = document.getElementById('answer-zone');
+
+                    if (!shuffledEl || !answerEl) return;
+
+                    this.shuffledSortable = Sortable.create(shuffledEl, {
+                        group: 'letters',
+                        animation: 150,
+                        ghostClass: 'letter-dragging',
+                        onEnd: (evt) => {
+                            this.updateAnswerCount();
+                        }
+                    });
+
+                    this.answerSortable = Sortable.create(answerEl, {
+                        group: 'letters',
+                        animation: 150,
+                        ghostClass: 'letter-dragging',
+                        onAdd: (evt) => {
+                            evt.to.classList.remove('drag-over');
+                            this.updateAnswerCount();
+                        },
+                        onRemove: (evt) => {
+                            this.updateAnswerCount();
+                        },
+                        onEnd: (evt) => {
+                            this.updateAnswerCount();
+                        }
+                    });
+                },
+
+                getAnswerLetters() {
+                    const answerZone = document.getElementById('answer-zone');
+                    if (!answerZone) return [];
+
+                    return Array.from(answerZone.children).map(el =>
+                        el.getAttribute('data-letter')
+                    ).filter(letter => letter);
+                },
+
+                updateAnswerCount() {
+                    const answerZone = document.getElementById('answer-zone');
+                    this.answerCount = answerZone ? answerZone.children.length : 0;
+                },
+
+                async checkAnswer() {
+                    const answerLetters = this.getAnswerLetters();
+                    this.userAnswer = answerLetters.join('');
+
+                    if (answerLetters.length !== this.currentWord.length) {
+                        alert('กรุณาเรียงตัวอักษรให้ครบ');
+                        return;
+                    }
+
+                    try {
+                        const response = await axios.post('/api/check-word/', {
+                            user_word: this.userAnswer,
+                            correct_word: this.currentWord
+                        });
+
+                        if (response.data.success) {
+                            this.isCorrect = response.data.is_correct;
+                            this.showResult = true;
+
+                            if (this.isCorrect) {
+                                this.score += 10 * parseInt(this.selectedDifficulty);
+                                this.wordsCompleted += 1;
+                                this.saveScore();
+
+                                // Celebration animation
+                                document.querySelector('#app').classList.add('celebration');
+                                setTimeout(() => {
+                                    document.querySelector('#app').classList.remove('celebration');
+                                }, 1000);
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error:', error);
+                        alert('เกิดข้อผิดพลาดในการตรวจคำตอบ');
+                    }
+                },
+
+                clearAnswer() {
+                    const answerZone = document.getElementById('answer-zone');
+                    const shuffledZone = document.getElementById('shuffled-letters');
+
+                    if (!answerZone || !shuffledZone) return;
+
+                    // Move all letters back to shuffled zone
+                    const answerLetters = Array.from(answerZone.children);
+                    answerLetters.forEach(letter => {
+                        shuffledZone.appendChild(letter);
+                    });
+
+                    this.answerCount = 0;
+                },
+
+                showHint() {
+                    if (this.hintUsed) return;
+
+                    this.hintUsed = true;
+
+                    // Show first letter as hint
+                    if (this.currentWord.length > 0) {
+                        this.hintText = `คำนี้เริ่มต้นด้วย "${this.currentWord[0]}"`;
+                    }
+                },
+
+                nextWord() {
+                    this.newGame();
+                },
+
+                async saveScore() {
+                    try {
+                        await axios.post('/api/save-score/', {
+                            session_id: this.sessionId,
+                            score: this.score,
+                            words_completed: this.wordsCompleted
+                        });
+                    } catch (error) {
+                        console.error('Error saving score:', error);
+                    }
+                },
+
+                generateSessionId() {
+                    return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
