@@ -40,7 +40,7 @@
 ### 1. Clone โปรเจกต์
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Jirasak-Thongpila/word_game.git
 cd word_game
 ```
 
